@@ -82,6 +82,7 @@ export async function validar(id: number) {
   const pendencias = verificarPendencias({
     enunciado: q.enunciado, idTema: q.idTema, idDificuldade: q.idDificuldade, alternativas: q.alternativas,
   });
+  if (q.tema === 'A classificar') pendencias.push('Tema ainda é "A classificar" (importada; revise tema e dificuldade)');
   await pool.query('UPDATE questao SET validado = $2 WHERE id_questao = $1', [id, pendencias.length === 0]);
   return { validado: pendencias.length === 0, pendencias };
 }
