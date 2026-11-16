@@ -1,0 +1,23 @@
+:root { --cor: #1f5fbf; --borda: #d5dae1; --bg: #f5f7fa; font-family: system-ui, sans-serif; }
+body { margin: 0; background: var(--bg); color: #1d2433; }
+.topo { display: flex; gap: 24px; align-items: center; padding: 12px 16px; background: var(--cor); color: #fff; flex-wrap: wrap; }
+.topo nav { display: flex; gap: 16px; flex-wrap: wrap; }
+.topo a { color: #cfe0ff; text-decoration: none; }
+.topo a.active { color: #fff; font-weight: 600; border-bottom: 2px solid #fff; }
+main { max-width: 1000px; margin: 0 auto; padding: 16px; }
+.barra { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+input, select, textarea, button { font: inherit; padding: 6px 8px; border: 1px solid var(--borda); border-radius: 6px; }
+textarea { width: 100%; box-sizing: border-box; }
+button { background: var(--cor); color: #fff; border-color: var(--cor); cursor: pointer; }
+button.sec { background: #fff; color: var(--cor); }
+button:disabled { opacity: .5; cursor: default; }
+.cartao { background: #fff; border: 1px solid var(--borda); border-radius: 8px; padding: 10px 12px; margin-bottom: 8px; }
+.cartao p { margin: 4px 0; }
+.selo { font-size: .8em; padding: 2px 8px; border-radius: 10px; background: #fde7c3; }
+.selo.ok { background: #cdeed3; }
+.erro { color: #b3261e; }
+.sucesso { color: #1b7a33; }
+.duas { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.alt { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
+.alt input[type=text] { flex: 1; }
+@media (max-width: 700px) { .duas { grid-template-columns: 1fr; } }
