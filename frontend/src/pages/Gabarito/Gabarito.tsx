@@ -5,10 +5,10 @@ export default function Gabarito() {
   const [disponiveis, setDisponiveis] = useState<Questao[]>([]);
   const [sel, setSel] = useState<Questao[]>([]);
   const [previa, setPrevia] = useState<LinhaGabarito[] | null>(null);
-  const [historico, setHistorico] = useState<{ id: number; dataHora: string; questoes: number }[]>([]);
+  const [historico, setHistorico] = useState<{ id: number; dataHora: string; questoes: number; legado?: boolean }[]>([]);
   const [msg, setMsg] = useState<{ texto: string; erro?: boolean } | null>(null);
 
-  const carregarHistorico = () => api.historico().then(setHistorico).catch(() => {});
+  const carregarHistorico = () => api.historico().then(setHistorico).catch(e => setMsg({ texto: e.message, erro: true }));
   useEffect(() => {
     api.questoes(new URLSearchParams({ validado: 'true' })).then(setDisponiveis)
       .catch((e) => setMsg({ texto: e.message, erro: true }));
@@ -42,11 +42,11 @@ export default function Gabarito() {
 
   return (
     <>
-      <h2>Montar gabarito</h2>
+      <h1>Montar gabarito</h1>
       {msg && <p className={msg.erro ? 'erro' : 'sucesso'} role="status">{msg.texto}</p>}
       <div className="duas">
         <section>
-          <h3>Questões validadas</h3>
+          <h2>Questões validadas</h2>
           {livres.length === 0 && <p>Nenhuma questão validada disponível.</p>}
           {livres.map((q) => (
             <div className="cartao" key={q.id}>
@@ -56,7 +56,7 @@ export default function Gabarito() {
           ))}
         </section>
         <section>
-          <h3>Gabarito atual</h3>
+          <h2>Gabarito atual</h2>
           {sel.map((q, i) => (
             <div className="cartao" key={q.id}>
               {i + 1}. Q-{q.id}{' '}
@@ -77,12 +77,13 @@ export default function Gabarito() {
           )}
         </section>
       </div>
-      <h3>Histórico</h3>
+      <h2>Histórico</h2>
       {historico.length === 0 && <p>Nenhum gabarito gerado.</p>}
       <ul>
         {historico.map((h) => (
           <li key={h.id}>
             #{h.id} — {new Date(h.dataHora).toLocaleString('pt-BR')} — {h.questoes} questões{' '}
+            {h.legado && <span>Histórico antigo: confira as respostas preservadas. </span>}
             <a href={`/api/gabaritos/${h.id}/csv`}>Baixar CSV</a>
           </li>
         ))}

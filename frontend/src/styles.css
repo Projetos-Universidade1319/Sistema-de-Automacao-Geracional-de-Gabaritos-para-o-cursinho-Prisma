@@ -20,4 +20,8 @@ button:disabled { opacity: .5; cursor: default; }
 .duas { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 .alt { display: flex; gap: 8px; align-items: center; margin-bottom: 6px; }
 .alt input[type=text] { flex: 1; }
+h1 { font-size: 1.5rem; }
+.conteudo { white-space: pre-wrap; overflow-wrap: anywhere; }
+.conteudo img { display: block; max-width: 100%; height: auto; margin: 8px 0; }
+.alt input[type=text] { min-width: 0; }
 @media (max-width: 700px) { .duas { grid-template-columns: 1fr; } }

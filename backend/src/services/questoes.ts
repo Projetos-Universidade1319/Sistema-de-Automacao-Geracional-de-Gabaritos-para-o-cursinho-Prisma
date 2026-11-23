@@ -2,8 +2,9 @@ import type { PoolClient } from 'pg';
 import { pool } from '../database/db.js';
 import type { QuestaoInput } from '../models/questao.js';
 import { verificarPendencias } from './validacao.js';
+import { numeroId } from '../models/ids.js';
 
-export interface Filtros { disciplina?: number; tema?: number; validado?: boolean; busca?: string }
+export interface Filtros { disciplina?: number; tema?: number; validado?: boolean; busca?: string; antes?: number; limite?: number }
 
 const SELECT_BASE = `
   SELECT q.id_questao AS id, q.enunciado, q.validado, q.id_externo AS "idExterno",
@@ -25,12 +26,15 @@ export async function listar(f: Filtros) {
   if (f.tema) { v.push(f.tema); where.push(`m.id_tema = $${v.length}`); }
   if (f.validado !== undefined) { v.push(f.validado); where.push(`q.validado = $${v.length}`); }
   if (f.busca) { v.push(`%${f.busca}%`); where.push(`q.enunciado ILIKE $${v.length}`); }
-  const sql = `${SELECT_BASE} ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY q.id_questao DESC LIMIT 200`;
-  return (await pool.query(sql, v)).rows;
+  if (f.antes) { v.push(f.antes); where.push(`q.id_questao < $${v.length}`); }
+  v.push(f.limite ?? 200);
+  const sql = `${SELECT_BASE} ${where.length ? 'WHERE ' + where.join(' AND ') : ''} ORDER BY q.id_questao DESC LIMIT $${v.length}`;
+  return (await pool.query(sql, v)).rows.map(q => ({ ...q, id: numeroId(q.id) }));
 }
 
-export async function obter(id: number) {
-  return (await pool.query(`${SELECT_BASE} WHERE q.id_questao = $1`, [id])).rows[0] ?? null;
+export async function obter(id: number, c: Pick<PoolClient, 'query'> = pool) {
+  const q = (await c.query(`${SELECT_BASE} WHERE q.id_questao = $1`, [id])).rows[0];
+  return q ? { ...q, id: numeroId(q.id) } : null;
 }
 
 export async function gravarFilhos(c: PoolClient, id: number, q: QuestaoInput) {
@@ -77,14 +81,17 @@ export async function atualizar(id: number, q: QuestaoInput) {
 }
 
 export async function validar(id: number) {
-  const q = await obter(id);
+  return transacao(async c => {
+  await c.query('SELECT id_questao FROM questao WHERE id_questao=$1 FOR UPDATE', [id]);
+  const q = await obter(id, c);
   if (!q) return null;
   const pendencias = verificarPendencias({
     enunciado: q.enunciado, idTema: q.idTema, idDificuldade: q.idDificuldade, alternativas: q.alternativas,
   });
   if (q.tema === 'A classificar') pendencias.push('Tema ainda é "A classificar" (importada; revise tema e dificuldade)');
-  await pool.query('UPDATE questao SET validado = $2 WHERE id_questao = $1', [id, pendencias.length === 0]);
+  await c.query('UPDATE questao SET validado = $2 WHERE id_questao = $1', [id, pendencias.length === 0]);
   return { validado: pendencias.length === 0, pendencias };
+  });
 }
 
 /** RF09: duplicidade por enunciado idêntico (ignorando caixa e espaços). */
@@ -92,5 +99,5 @@ export async function duplicadas() {
   return (await pool.query(`
     SELECT array_agg(id_questao ORDER BY id_questao) AS ids
     FROM questao GROUP BY lower(regexp_replace(btrim(enunciado), '\\s+', ' ', 'g'))
-    HAVING count(*) > 1`)).rows.map((r) => r.ids);
+    HAVING count(*) > 1`)).rows.map((r) => r.ids.map(numeroId));
 }

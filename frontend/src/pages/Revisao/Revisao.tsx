@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { api, type Alternativa, type Opcao } from '../../services/api';
+import Conteudo from '../../components/Conteudo';
 
 const LETRAS = 'ABCDEFGHIJ';
 const vazia = (): Alternativa[] => ['A', 'B', 'C', 'D', 'E'].map((letra) => ({ letra, texto: '', correta: false }));
@@ -19,21 +20,35 @@ export default function Revisao() {
   const [validado, setValidado] = useState(false);
   const [msg, setMsg] = useState<{ texto: string; erro?: boolean } | null>(null);
   const [pendencias, setPendencias] = useState<string[]>([]);
+  const [nomeTema, setNomeTema] = useState('');
+  const [salvando, setSalvando] = useState(false);
+  const erro = (e: Error) => setMsg({ texto: e.message, erro: true });
 
   useEffect(() => {
-    api.disciplinas().then(setDisciplinas);
-    api.dificuldades().then(setDificuldades);
+    api.disciplinas().then(setDisciplinas).catch(erro);
+    api.dificuldades().then(setDificuldades).catch(erro);
   }, []);
-  useEffect(() => { api.temas(disc ? Number(disc) : undefined).then(setTemas); }, [disc]);
   useEffect(() => {
-    if (!id) return;
+    let ativo = true;
+    api.temas(disc ? Number(disc) : undefined).then(t => { if (ativo) setTemas(t); }).catch(erro);
+    return () => { ativo = false; };
+  }, [disc]);
+  useEffect(() => {
+    setMsg(null); setPendencias([]); setNomeTema('');
+    if (!id) {
+      setEnunciado(''); setAlts(vazia()); setDisc(''); setTema(''); setDif(''); setValidado(false);
+      return;
+    }
+    let ativo = true;
     api.questao(Number(id)).then((q) => {
+      if (!ativo) return;
       setEnunciado(q.enunciado); setValidado(q.validado);
       setAlts(q.alternativas.length ? q.alternativas : vazia());
       setDisc(q.idDisciplina ? String(q.idDisciplina) : '');
       setTema(q.idTema ? String(q.idTema) : '');
       setDif(q.idDificuldade ? String(q.idDificuldade) : '');
     }).catch((e) => setMsg({ texto: e.message, erro: true }));
+    return () => { ativo = false; };
   }, [id]);
 
   const corpo = () => ({
@@ -47,6 +62,8 @@ export default function Revisao() {
   function mudar(letra: string, texto: string) { setAlts(alts.map((a) => (a.letra === letra ? { ...a, texto } : a))); }
 
   async function salvar(depoisValidar: boolean) {
+    if (salvando) return;
+    setSalvando(true);
     setMsg(null); setPendencias([]);
     try {
       const q = id ? await api.atualizar(Number(id), corpo()) : await api.criar(corpo());
@@ -59,11 +76,19 @@ export default function Revisao() {
       setMsg({ texto: depoisValidar ? 'Questão salva e validada.' : 'Questão salva (validação pendente).' });
       if (!id) nav(`/revisao/${q.id}`); else if (depoisValidar) nav('/');
     } catch (e) { setMsg({ texto: (e as Error).message, erro: true }); }
+    finally { setSalvando(false); }
+  }
+  async function criarTema() {
+    try {
+      const t = await api.criarTema(Number(disc), nomeTema.trim());
+      setTemas(await api.temas(Number(disc))); setTema(String(t.id)); setNomeTema('');
+      setMsg({ texto: 'Tema criado.' });
+    } catch (e) { erro(e as Error); }
   }
 
   return (
     <>
-      <h2>{id ? `Revisar questão Q-${id}` : 'Nova questão'} {id && <small>({validado ? 'validada' : 'pendente'})</small>}</h2>
+      <h1>{id ? `Revisar questão Q-${id}` : 'Nova questão'} {id && <small>({validado ? 'validada' : 'pendente'})</small>}</h1>
       <label>Enunciado<textarea rows={6} value={enunciado} onChange={(e) => setEnunciado(e.target.value)} /></label>
       <div className="barra">
         <select value={disc} onChange={(e) => { setDisc(e.target.value); setTema(''); }} aria-label="Disciplina">
@@ -79,16 +104,22 @@ export default function Revisao() {
           {dificuldades.map((d) => <option key={d.id} value={d.id}>{d.nome}</option>)}
         </select>
       </div>
-      <h3>Alternativas (marque a correta)</h3>
+      <div className="barra">
+        <input aria-label="Nome do novo tema" value={nomeTema} maxLength={120} onChange={e => setNomeTema(e.target.value)} placeholder="Nome do novo tema" />
+        <button className="sec" disabled={!disc || !nomeTema.trim()} onClick={criarTema}>Criar tema</button>
+      </div>
+      {enunciado.includes('![') && <Conteudo texto={enunciado} />}
+      <h2>Alternativas (marque a correta)</h2>
       {alts.map((a) => (
         <div className="alt" key={a.letra}>
           <input type="radio" name="correta" checked={a.correta} onChange={() => marcar(a.letra)} aria-label={`Correta: ${a.letra}`} />
           <strong>{a.letra}</strong>
-          <input type="text" value={a.texto} onChange={(e) => mudar(a.letra, e.target.value)} />
+          <input type="text" aria-label={`Texto da alternativa ${a.letra}`} value={a.texto} onChange={(e) => mudar(a.letra, e.target.value)} />
         </div>
       ))}
+      {alts.filter(a => a.texto.includes('![')).map(a => <Conteudo key={a.letra} texto={a.texto} />)}
       {alts.length < LETRAS.length && (
-        <button className="sec" onClick={() => setAlts([...alts, { letra: LETRAS[alts.length], texto: '', correta: false }])}>
+        <button className="sec" onClick={() => setAlts([...alts, { letra: [...LETRAS].find(l => !alts.some(a => a.letra === l))!, texto: '', correta: false }])}>
           + alternativa
         </button>
       )}
@@ -97,8 +128,8 @@ export default function Revisao() {
       )}
       {msg && <p className={msg.erro ? 'erro' : 'sucesso'} role="status">{msg.texto}</p>}
       <div className="barra" style={{ marginTop: 12 }}>
-        <button className="sec" onClick={() => salvar(false)}>Salvar</button>
-        <button onClick={() => salvar(true)}>Salvar e validar</button>
+        <button className="sec" disabled={salvando} onClick={() => salvar(false)}>Salvar</button>
+        <button disabled={salvando} onClick={() => salvar(true)}>Salvar e validar</button>
         <button className="sec" onClick={() => nav('/')}>Voltar</button>
       </div>
     </>

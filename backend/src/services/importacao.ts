@@ -1,5 +1,5 @@
 import type { PoolClient } from 'pg';
-import { questoesDaProva, type EnemQuestao } from './enemClient.js';
+import { ErroFonte, questoesDaProva, type EnemQuestao } from './enemClient.js';
 import { transacao } from './questoes.js';
 
 export const TEMA_PENDENTE = 'A classificar';
@@ -16,7 +16,8 @@ export function idExterno(q: Pick<EnemQuestao, 'year' | 'index' | 'language'>) {
 }
 
 export function montarEnunciado(q: EnemQuestao) {
-  return [q.context, q.alternativesIntroduction].filter((t) => t?.trim()).join('\n\n') || q.title;
+  const texto = [q.context, q.alternativesIntroduction].filter((t) => t?.trim()).join('\n\n') || q.title;
+  return [texto, ...(q.files ?? []).filter(url => !texto.includes(url)).map(url => `![Imagem da questão](${url})`)].join('\n\n');
 }
 
 async function importarUma(c: PoolClient, q: EnemQuestao): Promise<boolean> {
@@ -29,7 +30,8 @@ async function importarUma(c: PoolClient, q: EnemQuestao): Promise<boolean> {
   const id = ins.rows[0].id_questao;
 
   for (const a of q.alternatives) {
-    const texto = a.text?.trim() || (a.file ? `![alternativa ${a.letter}](${a.file})` : '(sem texto)');
+    const texto = [a.text?.trim(), a.file && !a.text?.includes(a.file) ? `![alternativa ${a.letter}](${a.file})` : '']
+      .filter(Boolean).join('\n\n') || '(sem texto)';
     await c.query('INSERT INTO alternativa (id_questao, letra, texto, correta) VALUES ($1,$2,$3,$4)',
       [id, a.letter, texto, a.isCorrect]);
   }
@@ -50,8 +52,20 @@ async function importarUma(c: PoolClient, q: EnemQuestao): Promise<boolean> {
 
 export async function importarProva(ano: number, fetcher?: typeof fetch, pausaMs?: number) {
   let importadas = 0, ignoradas = 0;
-  for await (const q of questoesDaProva(ano, fetcher, pausaMs)) {
+  let totalInformado: number | null = null, recebidas = 0;
+  const unicas = new Set<string>();
+  try {
+  for await (const q of questoesDaProva(ano, fetcher, pausaMs, p => { totalInformado = p.metadata.total ?? null; })) {
+    recebidas++; unicas.add(idExterno(q));
     (await transacao((c) => importarUma(c, q))) ? importadas++ : ignoradas++;
   }
-  return { ano, importadas, ignoradas };
+  } catch (e) {
+    if (e instanceof ErroFonte) e.progresso = { ano, importadas, ignoradas };
+    throw e;
+  }
+  const avisos: string[] = [];
+  if (totalInformado !== null && unicas.size !== totalInformado)
+    avisos.push(`A fonte informou ${totalInformado} questões, mas entregou ${unicas.size} IDs únicos. A importação pode estar incompleta.`);
+  if (recebidas !== unicas.size) avisos.push(`A fonte repetiu ${recebidas - unicas.size} registros entre as páginas.`);
+  return { ano, importadas, ignoradas, recebidas, unicas: unicas.size, totalInformado, avisos };
 }

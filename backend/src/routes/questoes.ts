@@ -7,13 +7,14 @@ export const questoesRouter = Router();
 const idParam = z.coerce.number().int().positive();
 
 questoesRouter.get('/', async (req, res) => {
-  const { disciplina, tema, validado, busca } = req.query as Record<string, string | undefined>;
-  res.json(await svc.listar({
-    disciplina: disciplina ? Number(disciplina) : undefined,
-    tema: tema ? Number(tema) : undefined,
-    validado: validado === undefined ? undefined : validado === 'true',
-    busca,
-  }));
+  const f = z.object({ disciplina: idParam.optional(), tema: idParam.optional(),
+    validado: z.enum(['true', 'false']).transform(v => v === 'true').optional(),
+    busca: z.string().max(2000).optional(), antes: idParam.optional(),
+    limite: z.coerce.number().int().min(1).max(200).default(200),
+  }).parse(req.query);
+  const rows = await svc.listar(f);
+  if (rows.length === f.limite) res.setHeader('X-Proxima-Pagina', String(rows.at(-1).id));
+  res.json(rows);
 });
 
 questoesRouter.get('/duplicadas', async (_req, res) => res.json(await svc.duplicadas()));
